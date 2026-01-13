@@ -172,26 +172,40 @@ ${approvalUrl || '(请在已登录设备上批准)'}
  * @param {object} userData - 用户数据
  */
 export async function sendSuccessReport(userData) {
-    const message = `
-✅ *M-TEAM 登录成功*
+    // 构建消息，只显示有效数据
+    let message = `✅ *M-TEAM 登录成功*\n\n`;
 
-👤 *用户名:* ${userData.username || 'N/A'}
-🏆 *等级:* ${userData.level || 'N/A'}
+    message += `👤 *用户名:* ${userData.username || 'Unknown'}\n`;
 
-📤 *上传量:* ${userData.uploaded || 'N/A'}
-📥 *下载量:* ${userData.downloaded || 'N/A'}
-📈 *分享率:* ${userData.ratio || 'N/A'}
+    if (userData.level && userData.level !== 'N/A') {
+        message += `🏆 *等级:* ${userData.level}\n`;
+    }
 
-✨ *魔力值:* ${userData.bonus || 'N/A'}
-⏱️ *时魔:* ${userData.bonusPerHour || 'N/A'}/小时
+    message += `\n`;
+    message += `📤 *上传量:* ${userData.uploaded || 'N/A'}\n`;
+    message += `📥 *下载量:* ${userData.downloaded || 'N/A'}\n`;
+    message += `📈 *分享率:* ${userData.ratio || 'N/A'}\n`;
 
-💻 *BT客户端:* ${userData.btClient || 'N/A'}
-🌐 *IPv4:* ${userData.ipv4 || 'N/A'}
+    message += `\n`;
+    message += `✨ *魔力值:* ${userData.bonus || 'N/A'}`;
 
-${userData.hasNewMessage ? '📬 *有新站内信!*' : '📭 无新消息'}
+    if (userData.bonusPerHour && userData.bonusPerHour !== 'N/A') {
+        message += ` (⏱️ ${userData.bonusPerHour}/时)`;
+    }
+    message += `\n`;
 
-⏰ *更新时间:* ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
-`;
+    if (userData.btClient && userData.btClient !== 'N/A') {
+        message += `💻 *客户端:* ${userData.btClient}\n`;
+    }
+
+    if (userData.ipv4 && userData.ipv4 !== 'N/A') {
+        message += `🌐 *IPv4:* ${userData.ipv4}\n`;
+    }
+
+    message += `\n`;
+    message += userData.hasNewMessage ? '📬 *有新站内信!*\n' : '';
+    message += `⏰ ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+
     await sendMessage(message);
 }
 
