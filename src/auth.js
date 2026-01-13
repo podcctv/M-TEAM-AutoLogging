@@ -712,4 +712,6 @@ export async function closeBrowser(browser) {
 export default {
     login,
     closeBrowser,
+    extractCookies,
+    extractStorage
 };

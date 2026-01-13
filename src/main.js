@@ -86,15 +86,21 @@ async function main() {
                 console.log('🔑 REPO_TOKEN: 已配置');
                 console.log('📦 GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY);
 
+                // 重新提取最新的 Cookie 和 Storage (关键：防止 Token 在抓取过程中刷新导致过期)
+                console.log('🔄 重新获取最终状态...');
+                const finalCookies = await auth.extractCookies(context, page);
+                const finalStorage = await auth.extractStorage(page);
+
                 // 保存 Cookie
-                console.log('🍪 Cookie 长度:', cookies ? cookies.length : 0);
-                await github.updateCookieSecret(cookies);
+                const cookieList = JSON.parse(finalCookies);
+                console.log('🍪 Cookie 长度:', cookieList ? cookieList.length : 0);
+                await github.updateCookieSecret(finalCookies);
                 console.log('✅ Cookie 已保存');
 
                 // 保存 LocalStorage
-                if (storage) {
-                    console.log('💾 Storage 长度:', storage.length);
-                    await github.updateStorageSecret(storage);
+                if (finalStorage) {
+                    console.log('💾 Storage 长度:', finalStorage.length);
+                    await github.updateStorageSecret(finalStorage);
                     console.log('✅ LocalStorage 已保存');
                 }
             } catch (saveError) {
