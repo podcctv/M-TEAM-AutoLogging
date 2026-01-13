@@ -8,6 +8,7 @@ export const config = {
     MT_USERNAME: process.env.MT_USERNAME,
     MT_PASSWORD: process.env.MT_PASSWORD,
     MT_COOKIE: process.env.MT_COOKIE || '',
+    MT_STORAGE: process.env.MT_STORAGE || '',  // LocalStorage 持久化
 
     // Telegram Bot 配置
     TG_BOT_TOKEN: process.env.TG_BOT_TOKEN,

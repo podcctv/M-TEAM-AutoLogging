@@ -69,7 +69,7 @@ async function main() {
         }
 
         browser = loginResult.browser;
-        const { page, cookies, context } = loginResult;
+        const { page, cookies, storage, context } = loginResult;
 
         // 抓取用户数据
         console.log('\n📍 步骤 2: 抓取用户数据');
@@ -79,21 +79,30 @@ async function main() {
         console.log('\n📍 步骤 3: 发送 Telegram 通知');
         await telegram.sendSuccessReport(userData);
 
-        // 更新 GitHub Secrets
-        console.log('\n📍 步骤 4: 更新 Cookie Secret');
+        // 更新 GitHub Secrets (Cookie + LocalStorage)
+        console.log('\n📍 步骤 4: 保存登录状态');
         if (config.REPO_TOKEN && config.GITHUB_REPOSITORY) {
             try {
                 console.log('🔑 REPO_TOKEN: 已配置');
                 console.log('📦 GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY);
+
+                // 保存 Cookie
                 console.log('🍪 Cookie 长度:', cookies ? cookies.length : 0);
                 await github.updateCookieSecret(cookies);
-                console.log('✅ Cookie 已保存到 GitHub Secrets');
-            } catch (cookieError) {
-                console.error('❌ Cookie 保存失败:', cookieError.message);
-                await telegram.sendMessage(`⚠️ Cookie 保存失败: ${cookieError.message}`);
+                console.log('✅ Cookie 已保存');
+
+                // 保存 LocalStorage
+                if (storage) {
+                    console.log('💾 Storage 长度:', storage.length);
+                    await github.updateStorageSecret(storage);
+                    console.log('✅ LocalStorage 已保存');
+                }
+            } catch (saveError) {
+                console.error('❌ 状态保存失败:', saveError.message);
+                await telegram.sendMessage(`⚠️ 状态保存失败: ${saveError.message}`);
             }
         } else {
-            console.log('⚠️ 未配置 REPO_TOKEN 或 GITHUB_REPOSITORY，Cookie 未保存!');
+            console.log('⚠️ 未配置 REPO_TOKEN 或 GITHUB_REPOSITORY，状态未保存!');
             console.log('   REPO_TOKEN:', config.REPO_TOKEN ? '已配置' : '未配置');
             console.log('   GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY || '未配置');
         }

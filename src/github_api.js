@@ -113,7 +113,17 @@ export async function updateCookieSecret(cookieJson) {
     return await updateSecret('MT_COOKIE', cookieJson);
 }
 
+/**
+ * 更新 Storage Secret
+ * @param {string} storageJson - LocalStorage JSON 字符串
+ */
+export async function updateStorageSecret(storageJson) {
+    return await updateSecret('MT_STORAGE', storageJson);
+}
+
 export default {
     updateSecret,
     updateCookieSecret,
+    updateStorageSecret,
 };
+

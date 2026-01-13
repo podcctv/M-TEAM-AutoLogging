@@ -53,6 +53,51 @@ async function tryLoginWithCookie(context) {
 }
 
 /**
+ * 恢复 LocalStorage
+ */
+async function tryRestoreStorage(page) {
+    if (!config.MT_STORAGE) {
+        console.log('📝 无已保存的 LocalStorage');
+        return false;
+    }
+
+    try {
+        const storage = JSON.parse(config.MT_STORAGE);
+        await page.evaluate((storageData) => {
+            for (const [key, value] of Object.entries(storageData)) {
+                localStorage.setItem(key, value);
+            }
+        }, storage);
+        console.log('💾 已恢复 LocalStorage');
+        return true;
+    } catch (error) {
+        console.log('⚠️ LocalStorage 解析失败:', error.message);
+        return false;
+    }
+}
+
+/**
+ * 提取 LocalStorage
+ */
+async function extractStorage(page) {
+    try {
+        const storage = await page.evaluate(() => {
+            const data = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                data[key] = localStorage.getItem(key);
+            }
+            return data;
+        });
+        console.log('💾 LocalStorage 已提取');
+        return JSON.stringify(storage);
+    } catch (error) {
+        console.log('⚠️ LocalStorage 提取失败:', error.message);
+        return null;
+    }
+}
+
+/**
  * 检查是否需要设备验证
  */
 async function checkDeviceApproval(page) {
@@ -485,10 +530,15 @@ export async function login() {
             console.log('🔍 验证 Cookie 有效性...');
             await page.goto(config.MT_INDEX_URL, { waitUntil: 'networkidle' });
 
+            // 恢复 LocalStorage
+            await tryRestoreStorage(page);
+            await page.reload({ waitUntil: 'networkidle' });
+
             if (await checkLoginStatus(page)) {
                 console.log('✅ Cookie 有效，已登录');
                 const cookies = await extractCookies(context);
-                return { success: true, cookies, page, browser, context };
+                const storage = await extractStorage(page);
+                return { success: true, cookies, storage, page, browser, context };
             }
 
             console.log('⚠️ Cookie 已失效，需要重新登录');
@@ -516,11 +566,12 @@ export async function login() {
             throw new Error('登录验证失败');
         }
 
-        // 提取 Cookie
+        // 提取 Cookie 和 LocalStorage
         const cookies = await extractCookies(context);
+        const storage = await extractStorage(page);
 
         console.log('✅ 登录成功');
-        return { success: true, cookies, page, browser, context };
+        return { success: true, cookies, storage, page, browser, context };
 
     } catch (error) {
         console.error('❌ 登录失败:', error.message);
@@ -537,7 +588,7 @@ export async function login() {
             await browser.close();
         }
 
-        return { success: false, cookies: null, page: null, browser: null, context: null };
+        return { success: false, cookies: null, storage: null, page: null, browser: null, context: null };
     }
 }
 
