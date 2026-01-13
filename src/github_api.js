@@ -4,14 +4,11 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import naclUtil from 'tweetnacl-util';
 import config from './config.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const sealedBox = require('tweetnacl-sealed-box');
-
-const { encodeBase64, decodeBase64 } = naclUtil;
+const sodium = require('libsodium-wrappers');
 
 let octokit = null;
 
@@ -64,24 +61,24 @@ async function getPublicKey() {
  * 加密 Secret 值
  * @param {string} value - 要加密的值
  * @param {string} publicKey - Base64 编码的公钥
- * @returns {string} - Base64 编码的加密值
+ * @returns {Promise<string>} - Base64 编码的加密值
  */
-function encryptSecret(value, publicKey) {
-    const messageBytes = new TextEncoder().encode(value);
-    const keyBytes = decodeBase64(publicKey);
+async function encryptSecret(value, publicKey) {
+    await sodium.ready;
 
-    // 使用 tweetnacl-sealed-box 进行加密
-    // 通过 require 导入通常能获得正确的导出对象
-    let encryptedBytes;
-    if (typeof sealedBox === 'function') {
-        encryptedBytes = sealedBox(messageBytes, keyBytes);
-    } else if (typeof sealedBox.seal === 'function') {
-        encryptedBytes = sealedBox.seal(messageBytes, keyBytes);
-    } else {
-        throw new Error('无法调用 sealedBox 加密函数，导入未识别');
-    }
+    // 转换公钥为二进制
+    const binkey = sodium.from_base64(publicKey, sodium.base64_variants.ORIGINAL);
 
-    return encodeBase64(encryptedBytes);
+    // 转换 secret 为二进制
+    const binsec = sodium.from_string(value);
+
+    // 加密
+    const encBytes = sodium.crypto_box_seal(binsec, binkey);
+
+    // 转换结果为 Base64
+    const output = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
+
+    return output;
 }
 
 /**
@@ -100,7 +97,7 @@ export async function updateSecret(secretName, secretValue) {
         const { owner, repo } = parseRepository();
         const { key, keyId } = await getPublicKey();
 
-        const encryptedValue = encryptSecret(secretValue, key);
+        const encryptedValue = await encryptSecret(secretValue, key);
 
         await client.rest.actions.createOrUpdateRepoSecret({
             owner,
