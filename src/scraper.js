@@ -7,33 +7,25 @@ import config from './config.js';
 
 /**
  * 格式化文件大小
- * @param {string} sizeStr - 原始大小字符串
- * @returns {string} - 格式化后的大小
  */
 function formatSize(sizeStr) {
     if (!sizeStr) return 'N/A';
-    // 清理并返回大小字符串
     return sizeStr.replace(/\s+/g, ' ').trim();
 }
 
 /**
  * 解析比率
- * @param {string} ratioStr - 比率字符串
- * @returns {string} - 格式化的比率
  */
 function parseRatio(ratioStr) {
     if (!ratioStr) return 'N/A';
-
-    // 处理无穷大比率
     if (ratioStr.includes('∞') || ratioStr.toLowerCase().includes('inf')) {
         return '∞';
     }
-
     return ratioStr.trim();
 }
 
 /**
- * 抓取用户数据
+ * 抓取用户数据 (导航到用户详情页获取完整信息)
  * @param {import('playwright').Page} page - Playwright 页面对象
  * @returns {object} - 用户数据
  */
@@ -41,14 +33,57 @@ export async function scrapeUserData(page) {
     console.log('📊 开始抓取用户数据...');
 
     try {
-        // 确保在首页或用户详情页
+        // 确保在首页
         const currentUrl = page.url();
         if (!currentUrl.includes('index') && !currentUrl.includes('userdetails')) {
             await page.goto(config.MT_INDEX_URL, { waitUntil: 'networkidle' });
         }
 
-        // 抓取页面数据
-        const userData = await page.evaluate(() => {
+        // 首先从首页获取基本信息
+        console.log('📍 从首页获取基本信息...');
+        const basicData = await page.evaluate(() => {
+            const data = {
+                username: null,
+                bonus: null,
+                hasNewMessage: false,
+            };
+
+            const pageText = document.body.innerText;
+
+            // 用户名 - 从页面左上角获取 (格式: SuperFlanker[退出])
+            const usernameMatch = pageText.match(/^([A-Za-z0-9_]+)\[退出\]/m) ||
+                pageText.match(/([A-Za-z0-9_]+)\s*\[退出\]/);
+            if (usernameMatch) {
+                data.username = usernameMatch[1];
+            }
+
+            // 魔力值 - 从首页获取 (格式: 魔力值 [使用]: 68)
+            const bonusMatch = pageText.match(/魔力值\s*\[使用\][：:\s]*([0-9.,]+)/);
+            if (bonusMatch) {
+                data.bonus = bonusMatch[1];
+            }
+
+            // 检测新消息
+            const messageEl = document.querySelector('a[href*="messages"], a[href*="inbox"]');
+            if (messageEl && /\(\d+\)/.test(messageEl.textContent)) {
+                data.hasNewMessage = true;
+            }
+
+            return data;
+        });
+
+        // 点击用户名进入详情页
+        console.log('📍 导航到用户详情页...');
+        const userLink = await page.$('a[href*="userdetails"]');
+        if (userLink) {
+            await userLink.click();
+            await page.waitForLoadState('networkidle');
+            await page.waitForTimeout(1000);
+        }
+
+        // 从详情页获取完整信息
+        console.log('📍 从详情页获取详细信息...');
+        const detailData = await page.evaluate(() => {
             const data = {
                 username: null,
                 level: null,
@@ -56,81 +91,111 @@ export async function scrapeUserData(page) {
                 downloaded: null,
                 ratio: null,
                 bonus: null,
-                hasNewMessage: false,
+                bonusPerHour: null,
+                btClient: null,
+                ipv4: null,
+                ipv6: null,
+                seedTime: null,
+                downloadTime: null,
             };
 
-            // 用户名
-            const usernameEl = document.querySelector('a[href*="userdetails"] b, .username, #userinfo a');
-            if (usernameEl) {
-                data.username = usernameEl.textContent.trim();
+            const pageText = document.body.innerText;
+
+            // 用户名 - 从页面标题或表格
+            const usernameMatch = pageText.match(/用[户戶]名[：:\s]*([A-Za-z0-9_]+)/);
+            if (usernameMatch) {
+                data.username = usernameMatch[1];
             }
 
-            // 用户信息区域
-            const userInfoText = document.body.innerText;
-
-            // 上传量
-            const uploadMatch = userInfoText.match(/上[传傳]量?[：:\s]*([0-9.,]+\s*[TGMKB]+)/i);
-            if (uploadMatch) {
-                data.uploaded = uploadMatch[1];
+            // 等级 - 从 img 的 alt 或 title 属性
+            const levelImg = document.querySelector('img[src*="class"], img[alt*="User"], img[title]');
+            if (levelImg) {
+                data.level = levelImg.getAttribute('alt') || levelImg.getAttribute('title') || null;
+            }
+            // 备用: 从文本匹配
+            if (!data.level) {
+                const levelMatch = pageText.match(/等[级級][：:\s]*([^\n]+)/);
+                if (levelMatch) {
+                    data.level = levelMatch[1].trim();
+                }
             }
 
-            // 下载量
-            const downloadMatch = userInfoText.match(/下[载載]量?[：:\s]*([0-9.,]+\s*[TGMKB]+)/i);
-            if (downloadMatch) {
-                data.downloaded = downloadMatch[1];
-            }
-
-            // 分享率
-            const ratioMatch = userInfoText.match(/分享率[：:\s]*([0-9.,∞]+)/i);
+            // 传送信息 (分享率、上传量、下载量)
+            // 格式: 傳送 分享率: 58.87 上傳量: 48.74 TB 下載量: 847.79 GB
+            const ratioMatch = pageText.match(/分享率[：:\s]*([0-9.,∞]+)/);
             if (ratioMatch) {
                 data.ratio = ratioMatch[1];
             }
 
-            // 魔力值
-            const bonusMatch = userInfoText.match(/魔力[值点點]?[：:\s]*([0-9.,]+)/i);
+            const uploadMatch = pageText.match(/上[传傳]量[：:\s]*([0-9.,]+\s*[TGMKB]+)/i);
+            if (uploadMatch) {
+                data.uploaded = uploadMatch[1];
+            }
+
+            const downloadMatch = pageText.match(/下[载載]量[：:\s]*([0-9.,]+\s*[TGMKB]+)/i);
+            if (downloadMatch) {
+                data.downloaded = downloadMatch[1];
+            }
+
+            // 魔力值和时魔
+            // 格式: 魔力值 68,557.1 / 時魔 29.157
+            const bonusMatch = pageText.match(/魔力[值点點]?[：:\s]*([0-9.,]+)/);
             if (bonusMatch) {
                 data.bonus = bonusMatch[1];
             }
 
-            // 等级
-            const levelEl = document.querySelector('img[class*="rank"], img[src*="class"]');
-            if (levelEl) {
-                data.level = levelEl.getAttribute('title') || levelEl.getAttribute('alt') || 'N/A';
+            const bonusPerHourMatch = pageText.match(/時魔[：:\s]*([0-9.,]+)/);
+            if (bonusPerHourMatch) {
+                data.bonusPerHour = bonusPerHourMatch[1];
             }
 
-            // 新消息检测
-            const messageIndicators = [
-                'a[href*="messages"] .new',
-                '.new-message',
-                'a[href*="inbox"]:has(.unread)',
-            ];
-
-            for (const selector of messageIndicators) {
-                const el = document.querySelector(selector);
-                if (el) {
-                    data.hasNewMessage = true;
-                    break;
-                }
+            // BT客户端信息
+            // 格式: qBittorrent/5.1.2
+            const clientMatch = pageText.match(/(qBittorrent|uTorrent|Transmission|Deluge|BitComet)[\/\s]*([0-9.]+)?/i);
+            if (clientMatch) {
+                data.btClient = clientMatch[0];
             }
 
-            // 备用方案：检查消息链接的数字
-            const inboxLink = document.querySelector('a[href*="messages"], a[href*="inbox"]');
-            if (inboxLink && /\(\d+\)/.test(inboxLink.textContent)) {
-                data.hasNewMessage = true;
+            // IPv4 和 IPv6
+            const ipv4Match = pageText.match(/IPv4[：:\s]*([0-9.*]+)/);
+            if (ipv4Match) {
+                data.ipv4 = ipv4Match[1];
+            }
+
+            const ipv6Match = pageText.match(/IPv6[：:\s]*([A-Fa-f0-9:.*]+|N\/A)/);
+            if (ipv6Match) {
+                data.ipv6 = ipv6Match[1];
+            }
+
+            // 做种时间和下载时间
+            const seedTimeMatch = pageText.match(/做[种種]時間[：:\s]*([^\n]+)/);
+            if (seedTimeMatch) {
+                data.seedTime = seedTimeMatch[1].trim();
+            }
+
+            const downloadTimeMatch = pageText.match(/下[载載]時間[：:\s]*([^\n]+)/);
+            if (downloadTimeMatch) {
+                data.downloadTime = downloadTimeMatch[1].trim();
             }
 
             return data;
         });
 
-        // 格式化数据
+        // 合并数据 (详情页优先)
         const formattedData = {
-            username: userData.username || 'Unknown',
-            level: userData.level || 'N/A',
-            uploaded: formatSize(userData.uploaded),
-            downloaded: formatSize(userData.downloaded),
-            ratio: parseRatio(userData.ratio),
-            bonus: userData.bonus || 'N/A',
-            hasNewMessage: userData.hasNewMessage,
+            username: detailData.username || basicData.username || 'Unknown',
+            level: detailData.level || 'N/A',
+            uploaded: formatSize(detailData.uploaded),
+            downloaded: formatSize(detailData.downloaded),
+            ratio: parseRatio(detailData.ratio),
+            bonus: detailData.bonus || basicData.bonus || 'N/A',
+            bonusPerHour: detailData.bonusPerHour || 'N/A',
+            btClient: detailData.btClient || 'N/A',
+            ipv4: detailData.ipv4 || 'N/A',
+            ipv6: detailData.ipv6 || 'N/A',
+            seedTime: detailData.seedTime || 'N/A',
+            downloadTime: detailData.downloadTime || 'N/A',
+            hasNewMessage: basicData.hasNewMessage,
         };
 
         console.log('✅ 用户数据抓取完成');
@@ -140,6 +205,8 @@ export async function scrapeUserData(page) {
         console.log('   下载:', formattedData.downloaded);
         console.log('   比率:', formattedData.ratio);
         console.log('   魔力值:', formattedData.bonus);
+        console.log('   时魔:', formattedData.bonusPerHour);
+        console.log('   BT客户端:', formattedData.btClient);
 
         return formattedData;
 
@@ -152,66 +219,15 @@ export async function scrapeUserData(page) {
             downloaded: 'N/A',
             ratio: 'N/A',
             bonus: 'N/A',
+            bonusPerHour: 'N/A',
+            btClient: 'N/A',
+            ipv4: 'N/A',
+            ipv6: 'N/A',
             hasNewMessage: false,
         };
     }
 }
 
-/**
- * 抓取更详细的用户信息 (从用户详情页)
- * @param {import('playwright').Page} page 
- */
-export async function scrapeDetailedUserData(page) {
-    console.log('📊 抓取详细用户信息...');
-
-    try {
-        // 查找用户详情链接
-        const userDetailsLink = await page.$('a[href*="userdetails"]');
-        if (userDetailsLink) {
-            await userDetailsLink.click();
-            await page.waitForLoadState('networkidle');
-        }
-
-        const detailedData = await page.evaluate(() => {
-            const data = {};
-            const pageText = document.body.innerText;
-
-            // 注册时间
-            const regMatch = pageText.match(/注册日期[：:\s]*(.+?)(?:\n|$)/);
-            if (regMatch) {
-                data.registrationDate = regMatch[1].trim();
-            }
-
-            // 最后访问
-            const lastAccessMatch = pageText.match(/最[后後]访问[：:\s]*(.+?)(?:\n|$)/);
-            if (lastAccessMatch) {
-                data.lastAccess = lastAccessMatch[1].trim();
-            }
-
-            // 做种数量
-            const seedingMatch = pageText.match(/做种数?[：:\s]*(\d+)/);
-            if (seedingMatch) {
-                data.seedingCount = seedingMatch[1];
-            }
-
-            // 下载数量
-            const leechingMatch = pageText.match(/下载中?[：:\s]*(\d+)/);
-            if (leechingMatch) {
-                data.leechingCount = leechingMatch[1];
-            }
-
-            return data;
-        });
-
-        return detailedData;
-
-    } catch (error) {
-        console.error('⚠️ 详细信息抓取失败:', error.message);
-        return {};
-    }
-}
-
 export default {
     scrapeUserData,
-    scrapeDetailedUserData,
 };

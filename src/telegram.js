@@ -176,13 +176,18 @@ export async function sendSuccessReport(userData) {
 ✅ *M-TEAM 登录成功*
 
 👤 *用户名:* ${userData.username || 'N/A'}
-📊 *等级:* ${userData.level || 'N/A'}
+🏆 *等级:* ${userData.level || 'N/A'}
 
 📤 *上传量:* ${userData.uploaded || 'N/A'}
 📥 *下载量:* ${userData.downloaded || 'N/A'}
 📈 *分享率:* ${userData.ratio || 'N/A'}
 
 ✨ *魔力值:* ${userData.bonus || 'N/A'}
+⏱️ *时魔:* ${userData.bonusPerHour || 'N/A'}/小时
+
+💻 *BT客户端:* ${userData.btClient || 'N/A'}
+🌐 *IPv4:* ${userData.ipv4 || 'N/A'}
+
 ${userData.hasNewMessage ? '📬 *有新站内信!*' : '📭 无新消息'}
 
 ⏰ *更新时间:* ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
