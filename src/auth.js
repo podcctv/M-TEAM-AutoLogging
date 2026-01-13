@@ -104,26 +104,50 @@ async function handleDeviceApproval(page) {
  * 检查是否需要 2FA 验证
  */
 async function check2FA(page) {
+    console.log('🔍 检查是否需要 2FA...');
+
+    // 方法1: 通过选择器检查
     const tfaIndicators = [
+        'input[placeholder*="6位"]',
+        'input[placeholder*="验证码"]',
+        'input[placeholder*="数字"]',
         'input[name*="2fa"]',
         'input[name*="totp"]',
         'input[name*="otp"]',
-        'input[placeholder*="验证码"]',
-        'input[placeholder*="verification"]',
+        'input[name*="code"]',
+        'input[type="text"][maxlength="6"]',
     ];
 
     for (const selector of tfaIndicators) {
         const element = await page.$(selector);
         if (element) {
-            console.log('🔐 检测到 2FA 验证页面');
+            console.log('🔐 检测到 2FA 验证页面 (选择器匹配)');
             return true;
         }
     }
 
-    // 检查页面文本
+    // 方法2: 检查页面文本内容
     const pageContent = await page.content();
-    const tfaTexts = ['两步验证', '双重认证', '2FA', 'TOTP', '验证码'];
-    return tfaTexts.some(text => pageContent.includes(text));
+    const tfaTexts = [
+        '输入6位',
+        '6位数字',
+        '验证码',
+        '邮箱验证码',
+        '其他验证码',
+        '两步验证',
+        '双重认证',
+        '2FA',
+        'TOTP',
+    ];
+
+    for (const text of tfaTexts) {
+        if (pageContent.includes(text)) {
+            console.log(`🔐 检测到 2FA 验证页面 (文本匹配: ${text})`);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -142,47 +166,80 @@ async function handle2FA(page) {
         throw new Error('2FA 验证码输入超时');
     }
 
-    // 查找验证码输入框
+    // 查找验证码输入框 (按优先级)
     const inputSelectors = [
+        'input[placeholder*="6位"]',
+        'input[placeholder*="验证码"]',
+        'input[placeholder*="数字"]',
+        'input[type="text"][maxlength="6"]',
+        'input[name*="code"]',
         'input[name*="2fa"]',
         'input[name*="totp"]',
         'input[name*="otp"]',
-        'input[type="text"][maxlength="6"]',
-        'input[placeholder*="验证码"]',
+        // 通用文本输入框 (作为最后手段)
+        'input[type="text"]:not([name="username"]):not([name="password"])',
     ];
 
     let inputElement = null;
     for (const selector of inputSelectors) {
-        inputElement = await page.$(selector);
-        if (inputElement) break;
+        try {
+            inputElement = await page.$(selector);
+            if (inputElement) {
+                console.log(`📝 找到验证码输入框: ${selector}`);
+                break;
+            }
+        } catch (e) {
+            // 继续尝试下一个
+        }
     }
 
     if (!inputElement) {
         throw new Error('未找到验证码输入框');
     }
 
-    // 输入验证码
+    // 清空并输入验证码
+    await inputElement.click();
+    await inputElement.fill('');
     await inputElement.fill(code);
     console.log('✅ 验证码已填入');
 
+    // 等待一下确保输入完成
+    await page.waitForTimeout(500);
+
     // 查找并点击提交按钮
     const submitSelectors = [
-        'button[type="submit"]',
-        'input[type="submit"]',
+        'button:has-text("登 录")',
+        'button:has-text("登录")',
         'button:has-text("验证")',
         'button:has-text("确认")',
-        'button:has-text("Submit")',
+        'button:has-text("提交")',
+        'button[type="submit"]',
+        'input[type="submit"]',
     ];
 
+    let clicked = false;
     for (const selector of submitSelectors) {
-        const button = await page.$(selector);
-        if (button) {
-            await button.click();
-            break;
+        try {
+            const button = await page.$(selector);
+            if (button) {
+                console.log(`🖱️ 点击提交按钮: ${selector}`);
+                await button.click();
+                clicked = true;
+                break;
+            }
+        } catch (e) {
+            // 继续尝试下一个
         }
     }
 
+    if (!clicked) {
+        // 备用方法: 按回车键提交
+        console.log('⚠️ 未找到提交按钮，尝试按回车键...');
+        await inputElement.press('Enter');
+    }
+
     // 等待页面响应
+    await page.waitForTimeout(2000);
     await page.waitForLoadState('networkidle');
 }
 
