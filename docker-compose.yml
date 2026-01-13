@@ -9,13 +9,4 @@ services:
       - .env
     volumes:
       - ./data:/app/data
-    environment:
-      - MT_USERNAME=${MT_USERNAME}
-      - MT_PASSWORD=${MT_PASSWORD}
-      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
-      - TG_USER_ID=${TG_USER_ID}
-      - CRON_EXPRESSION=${CRON_EXPRESSION:-0 9 * * *} # 默认9点
-      - RANDOM_DELAY_MAX=${RANDOM_DELAY_MAX:-2700000} # 默认45分钟
-      - RUN_ON_START=${RUN_ON_START:-false}
-      - SKIP_DELAY=${SKIP_DELAY:-false}
     tty: true
