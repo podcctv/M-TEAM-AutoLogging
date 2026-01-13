@@ -4,11 +4,12 @@
 
 ## ✨ 功能特性
 
-- 🔐 **智能登录** - 支持设备验证和 2FA 双重认证（最多 10 次重试）
+- 🔐 **智能登录** - 支持设备验证和 2FA 双重认证（智能重试 + 错误反馈）
+- 💾 **状态持久化** - 同时保存 Cookie 和 LocalStorage，**极大减少 2FA 触发频率**
 - 🎲 **随机延迟** - 0-45 分钟随机启动，模拟真人行为
-- 📊 **数据抓取** - 自动获取上传/下载量、分享率、魔力值等
-- 📱 **Telegram 通知** - 登录状态和数据报告实时推送
-- 🍪 **Cookie 持久化** - 自动更新 GitHub Secrets，减少登录频率
+- 📊 **深度抓取** - 获取详细数据：等级、魔力值/时魔、BT客户端、IPv4/IPv6、分享率等
+- 📱 **Telegram 通知** - 实时推送登录状态、数据报告和验证码请求（自动隐藏无效字段）
+- 🔄 **自动更新** - 登录成功后自动更新 GitHub Secrets，无需人工干预
 
 ## 🚀 快速开始
 
@@ -27,9 +28,10 @@
 | `TG_BOT_TOKEN` | Telegram Bot Token | ✅ |
 | `TG_USER_ID` | 你的 Telegram 用户 ID | ✅ |
 | `REPO_TOKEN` | GitHub PAT (需要 `repo` 权限) | ✅ |
-| `MT_COOKIE` | 已保存的 Cookie (自动更新，首次留空) | ⏳ |
+| `MT_COOKIE` | 已保存的 Cookie (自动更新) | ⏳ |
+| `MT_STORAGE` | 已保存的 LocalStorage (自动更新) | ⏳ |
 
-> ⚠️ **REPO_TOKEN 权限要求**: 创建 PAT 时必须勾选 `repo` (Full control)，否则 Cookie 无法保存！
+> ⚠️ **REPO_TOKEN 权限要求**: 创建 PAT 时必须勾选 `repo` (Full control)，否则无法保存登录状态！
 
 ### 3. 启用 Actions
 
@@ -41,16 +43,16 @@
 
 ## 📋 2FA 验证流程
 
-首次登录会触发 2FA 验证：
+首次登录或 Cookie 失效时会触发 2FA：
 
 1. 脚本检测到 2FA 页面
-2. **Telegram 机器人发送提示**
+2. **Telegram 机器人发送提示** (显示剩余重试次数)
 3. 你回复验证码（两种方式）:
    - 直接发送: `123456`
    - 命令格式: `/mtcode 123456`
 4. 脚本自动填入验证码
-5. **登录成功后 Cookie 自动保存**
-6. 下次运行自动使用 Cookie，无需 2FA
+5. **登录成功后自动保存 Cookie 和 LocalStorage**
+6. 下次运行优先使用保存的状态，**跳过登录和 2FA**
 
 ## 📁 项目结构
 
@@ -60,8 +62,8 @@ M-TEAM-AutoLogging/
 ├── src/
 │   ├── config.js       # 配置管理
 │   ├── telegram.js     # TG 消息 + 验证码轮询
-│   ├── github_api.js   # Cookie 持久化到 Secrets
-│   ├── auth.js         # 登录/设备验证/2FA (10次重试)
+│   ├── github_api.js   # Secrets 管理 (支持 libsodium 加密)
+│   ├── auth.js         # 核心认证 (登录/2FA/持久化)
 │   ├── scraper.js      # 数据抓取
 │   └── main.js         # 主入口
 ├── package.json
