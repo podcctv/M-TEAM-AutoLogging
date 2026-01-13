@@ -477,8 +477,12 @@ async function performLogin(page) {
 /**
  * 检查登录状态
  */
+/**
+ * 检查登录状态
+ */
 async function checkLoginStatus(page) {
     const url = page.url();
+    console.log(`🔍 检查登录状态: ${url}`);
 
     // 如果还在登录页面，可能登录失败
     if (url.includes('login')) {
@@ -492,6 +496,7 @@ async function checkLoginStatus(page) {
             throw new Error(`登录失败: ${errorTexts.join(', ')}`);
         }
 
+        console.log('⚠️ 检测到仍在登录页面');
         return false;
     }
 
@@ -500,15 +505,24 @@ async function checkLoginStatus(page) {
         'a[href*="userdetails"]',
         '.username',
         '#userinfo',
+        // 可能的新版选择器
+        'div[class*="user-profile"]',
+        'span[class*="avatar"]'
     ];
 
     for (const selector of userIndicators) {
-        const element = await page.$(selector);
-        if (element) {
-            console.log('✅ 登录状态确认');
-            return true;
-        }
+        try {
+            const element = await page.$(selector);
+            if (element) {
+                console.log(`✅ 登录状态确认 (匹配: ${selector})`);
+                return true;
+            }
+        } catch (e) { }
     }
+
+    // 截图调试
+    console.log('⚠️ 未找到用户元素，当前页面标题:', await page.title());
+    await page.screenshot({ path: '/tmp/login_check_fail.png' });
 
     return !url.includes('login');
 }
@@ -516,12 +530,21 @@ async function checkLoginStatus(page) {
 /**
  * 提取 Cookie
  */
-async function extractCookies(context) {
-    const cookies = await context.cookies();
+async function extractCookies(context, page = null) {
+    // 尝试获取所有 Cookie
+    let cookies = await context.cookies();
+
+    // 如果没有，尝试指定当前 URL
+    if (cookies.length === 0 && page) {
+        console.log('⚠️ 全局 Cookie 为空，尝试获取当前 URL Cookie...');
+        cookies = await context.cookies([page.url()]);
+    }
+
     const cookieNames = cookies.map(c => c.name).join(', ');
     console.log(`🍪 Cookie 已提取 (${cookies.length} 个): ${cookieNames}`);
-    const cookieJson = JSON.stringify(cookies);
-    return cookieJson;
+
+    // 即使为空也返回，以便更新 Secrets
+    return JSON.stringify(cookies);
 }
 
 /**
@@ -560,7 +583,7 @@ export async function login() {
 
             if (await checkLoginStatus(page)) {
                 console.log('✅ Cookie 有效，已登录');
-                const cookies = await extractCookies(context);
+                const cookies = await extractCookies(context, page);
                 const storage = await extractStorage(page);
                 return { success: true, cookies, storage, page, browser, context };
             }
@@ -591,7 +614,8 @@ export async function login() {
         }
 
         // 提取 Cookie 和 LocalStorage
-        const cookies = await extractCookies(context);
+        // 提取 Cookie 和 LocalStorage
+        const cookies = await extractCookies(context, page);
         const storage = await extractStorage(page);
 
         console.log('✅ 登录成功');
