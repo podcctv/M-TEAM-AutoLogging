@@ -20,6 +20,12 @@ import github from './github_api.js';
  * 模拟真人非准点登录行为
  */
 async function randomDelay() {
+    // 检查是否跳过延迟
+    if (process.env.SKIP_DELAY === 'true') {
+        console.log('ℹ️ 已设置跳过随机延迟');
+        return;
+    }
+
     const maxDelay = config.RANDOM_DELAY_MAX; // 最大 45 分钟
     const delay = Math.floor(Math.random() * maxDelay);
     const minutes = Math.floor(delay / 60000);
