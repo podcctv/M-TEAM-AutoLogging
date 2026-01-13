@@ -9,8 +9,9 @@ import telegram from './telegram.js';
 
 /**
  * 创建浏览器实例
+ * @param {Object|null} storageState - 可选的会话状态
  */
-async function createBrowser() {
+async function createBrowser(storageState = null) {
     const browser = await chromium.launch({
         headless: true,
         args: [
@@ -22,134 +23,140 @@ async function createBrowser() {
         ],
     });
 
-    const context = await browser.newContext({
+    const contextOptions = {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         viewport: { width: 1920, height: 1080 },
         locale: 'zh-CN',
         timezoneId: 'Asia/Shanghai',
-    });
+    };
 
+    // 如果有保存的会话状态，并且有效，则加载
+    if (storageState) {
+        // 简单的验证
+        if (storageState.cookies || storageState.origins) {
+            console.log('📦 加载已保存的 StorageState (Cookie + Storage)');
+            contextOptions.storageState = storageState;
+        }
+    }
+
+    const context = await browser.newContext(contextOptions);
     return { browser, context };
 }
 
 /**
- * 尝试使用已保存的 Cookie 登录
+ * 获取会话状态 (Cookie + LocalStorage)
  */
-async function tryLoginWithCookie(context) {
-    if (!config.MT_COOKIE) {
-        console.log('📝 无已保存的 Cookie');
-        return false;
+async function getSessionState() {
+    if (!config.MT_SESSION) {
+        return null;
     }
-
     try {
-        const cookies = JSON.parse(config.MT_COOKIE);
-        await context.addCookies(cookies);
-        console.log('🍪 已加载保存的 Cookie');
-        return true;
-    } catch (error) {
-        console.log('⚠️ Cookie 解析失败:', error.message);
-        return false;
+        const session = JSON.parse(config.MT_SESSION);
+        return session;
+    } catch (e) {
+        console.log('⚠️ MT_SESSION 解析失败:', e.message);
+        return null;
     }
 }
 
+// ... (保持 tryLoginWithCookie, tryRestoreStorage 等辅助函数以备不时之需, 但主要逻辑已改变)
+// 为了兼容性，我们可以保留旧的提取函数，但 login 流程将主要使用 snapshot
+
 /**
- * 恢复 LocalStorage (及 SessionStorage)
+ * 主登录流程
  */
-async function tryRestoreStorage(page) {
-    if (!config.MT_STORAGE) {
-        console.log('📝 无已保存的 LocalStorage');
-        return false;
-    }
+export async function login() {
+    let browser = null;
+    let context = null;
+    let page = null;
 
     try {
-        const fullStorage = JSON.parse(config.MT_STORAGE);
+        // 初始化 Telegram updates
+        await telegram.initUpdates();
 
-        // 分离 SessionStorage 和 LocalStorage
-        const sessionStorageData = fullStorage._session_storage_dump || null;
-        const localStorageData = { ...fullStorage };
-        delete localStorageData._session_storage_dump;
+        // 1. 获取保存的会话状态
+        const savedDoc = await getSessionState();
 
-        // 恢复 LocalStorage
-        await page.evaluate((data) => {
-            for (const [key, value] of Object.entries(data)) {
-                localStorage.setItem(key, value);
-            }
-        }, localStorageData);
-        console.log(`💾 已恢复 LocalStorage (${Object.keys(localStorageData).length} 项)`);
+        // 2. 创建浏览器 (带状态)
+        console.log('🌐 启动浏览器...');
+        const browserContext = await createBrowser(savedDoc);
+        browser = browserContext.browser;
+        context = browserContext.context;
 
-        // 恢复 SessionStorage (如果有)
-        if (sessionStorageData) {
-            await page.evaluate((data) => {
-                for (const [key, value] of Object.entries(data)) {
-                    sessionStorage.setItem(key, value);
+        // 创建页面
+        page = await context.newPage();
+
+        // 3. 验证登录状态
+        let isLoggedIn = false;
+
+        if (savedDoc) {
+            console.log('🔍 验证会话有效性...');
+            try {
+                await page.goto(config.MT_INDEX_URL, { waitUntil: 'networkidle' });
+
+                // 检查是否有效
+                if (await checkLoginStatus(page)) {
+                    console.log('✅ 会话有效，已无需登录');
+                    isLoggedIn = true;
+                } else {
+                    console.log('⚠️ 会话已失效，准备重新登录');
                 }
-            }, sessionStorageData);
-            console.log(`💾 已恢复 SessionStorage (${Object.keys(sessionStorageData).length} 项)`);
+            } catch (e) {
+                console.log('⚠️ 验证会话时出错:', e.message);
+            }
         }
 
-        return true;
-    } catch (error) {
-        console.log('⚠️ LocalStorage 解析失败:', error.message);
-        return false;
-    }
-}
+        // 4. 如果未登录，执行登录流程
+        if (!isLoggedIn) {
+            console.log('📍 访问登录页面...');
+            await page.goto(config.MT_LOGIN_URL, { waitUntil: 'networkidle' });
 
-/**
- * 提取 LocalStorage (及 SessionStorage)
- * 注意：过滤掉过大的值，以避免超过 GitHub Secrets 限制 (64KB)
- */
-async function extractStorage(page) {
-    try {
-        // 提取 SessionStorage
-        const sessionStorageData = await page.evaluate(() => {
-            const data = {};
-            for (let i = 0; i < sessionStorage.length; i++) {
-                const key = sessionStorage.key(i);
-                data[key] = sessionStorage.getItem(key);
+            await performLogin(page);
+
+            // 检查设备验证 和 2FA
+            if (await checkDeviceApproval(page)) {
+                await handleDeviceApproval(page);
             }
-            return data;
-        });
-
-        // 提取 LocalStorage
-        const localStorageData = await page.evaluate(() => {
-            const data = {};
-            const MAX_VALUE_SIZE = 2048; // 2KB 限制
-
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                const value = localStorage.getItem(key);
-
-                if (value && value.length > MAX_VALUE_SIZE) {
-                    console.warn(`[LocalStorage] ⚠️ 忽略大文件: ${key} (${value.length} 字符)`);
-                    continue;
-                }
-
-                data[key] = value;
+            if (await check2FA(page)) {
+                await handle2FA(page);
             }
-            return data;
-        });
 
-        // 合并数据 (SessionStorage 放在特殊键下)
-        const fullStorage = {
-            ...localStorageData,
-            _session_storage_dump: sessionStorageData
+            // 再次通过弹窗处理和检查
+            await handleAnnouncements(page);
+
+            if (!(await checkLoginStatus(page))) {
+                throw new Error('登录验证失败');
+            }
+            console.log('✅ 登录成功');
+        }
+
+        // 5. 统一提取状态 (storageState)
+        // 无论是否重新登录，都提取最新的状态
+        console.log('💾 提取浏览器完整状态 (Cookies + Storage)...');
+        const storageState = await context.storageState();
+
+        // 为了兼容旧的日志显示，提取一下统计信息
+        const cookiesCount = storageState.cookies ? storageState.cookies.length : 0;
+        const originsCount = storageState.origins ? storageState.origins.length : 0;
+        console.log(`📊 状态统计: Cookies(${cookiesCount}) + Origins(${originsCount})`);
+
+        return {
+            success: true,
+            storageState: JSON.stringify(storageState), // 返回完整的 storageState JSON 字符串
+            page,
+            browser,
+            context
         };
 
-        const lsCount = Object.keys(localStorageData).length;
-        const ssCount = Object.keys(sessionStorageData).length;
-
-        console.log(`💾 Storage 提取: LS(${lsCount}) + SS(${ssCount})`);
-
-        // 简单的大小检查
-        const payload = JSON.stringify(fullStorage);
-        if (payload.length > 50000) {
-            console.warn(`⚠️ Storage 数据量较大 (${Math.round(payload.length / 1024)}KB)，接近 GitHub Secrets 限制`);
-        }
-
-        return payload;
     } catch (error) {
-        console.log('⚠️ Storage 提取失败:', error.message);
-        return null;
+        console.error('❌ 登录失败:', error.message);
+        if (page) {
+            const screenshotPath = '/tmp/error_screenshot.png';
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            await telegram.sendErrorNotice(error.message, screenshotPath);
+        }
+        if (browser) await browser.close();
+        return { success: false, storageState: null, page: null, browser: null, context: null };
     }
 }
 

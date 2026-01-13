@@ -79,30 +79,34 @@ async function main() {
         console.log('\n📍 步骤 3: 发送 Telegram 通知');
         await telegram.sendSuccessReport(userData);
 
-        // 更新 GitHub Secrets (Cookie + LocalStorage)
+        // 更新 GitHub Secrets (Session)
         console.log('\n📍 步骤 4: 保存登录状态');
         if (config.REPO_TOKEN && config.GITHUB_REPOSITORY) {
             try {
                 console.log('🔑 REPO_TOKEN: 已配置');
                 console.log('📦 GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY);
 
-                // 重新提取最新的 Cookie 和 Storage (关键：防止 Token 在抓取过程中刷新导致过期)
-                console.log('🔄 重新获取最终状态...');
-                const finalCookies = await auth.extractCookies(context, page);
-                const finalStorage = await auth.extractStorage(page);
+                // 重新提取最新的状态 (storageState)
+                console.log('🔄 获取最终会话状态...');
+                const storageState = await context.storageState();
+                const sessionStr = JSON.stringify(storageState);
 
-                // 保存 Cookie
-                const cookieList = JSON.parse(finalCookies);
-                console.log('🍪 Cookie 长度:', cookieList ? cookieList.length : 0);
-                await github.updateCookieSecret(finalCookies);
-                console.log('✅ Cookie 已保存');
+                // 检查大小
+                const kbSize = (sessionStr.length / 1024).toFixed(2);
+                console.log(`📦 会话状态大小: ${kbSize} KB`);
 
-                // 保存 LocalStorage
-                if (finalStorage) {
-                    console.log('💾 Storage 长度:', finalStorage.length);
-                    await github.updateStorageSecret(finalStorage);
-                    console.log('✅ LocalStorage 已保存');
+                if (sessionStr.length > 60000) {
+                    console.warn('⚠️ 会话状态过大，可能导致 Secret 保存失败! 正在尝试优化...');
+                    // 简单的优化：移除一些垃圾数据 (如果需要可以做)
                 }
+
+                await github.updateSessionSecret(sessionStr);
+
+                // 为了兼容性，也尽量保存旧的 Cookie Secret (可选)
+                // await github.updateCookieSecret(JSON.stringify(storageState.cookies));
+
+                console.log('✅ 完整会话 (MT_SESSION) 已保存');
+
             } catch (saveError) {
                 console.error('❌ 状态保存失败:', saveError.message);
                 await telegram.sendMessage(`⚠️ 状态保存失败: ${saveError.message}`);

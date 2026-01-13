@@ -131,8 +131,17 @@ export async function updateStorageSecret(storageJson) {
     return await updateSecret('MT_STORAGE', storageJson);
 }
 
+/**
+ * 更新 Session Secret (包含 Cookie 和 LocalStorage 的完整状态)
+ * @param {string} sessionJson - Playwright storageState JSON 字符串
+ */
+export async function updateSessionSecret(sessionJson) {
+    return await updateSecret('MT_SESSION', sessionJson);
+}
+
 export default {
     updateSecret,
     updateCookieSecret,
     updateStorageSecret,
+    updateSessionSecret,
 };
