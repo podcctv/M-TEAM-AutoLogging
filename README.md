@@ -4,11 +4,11 @@
 
 ## ✨ 功能特点
 
-- � **Docker 部署**: 开箱即用，支持长期运行
+- 🐳 **Docker 部署**: 开箱即用，支持长期运行
 - 🔐 **智能验证**: 自动处理 2FA 验证码交互 (通过 Telegram Bot)
 - 💾 **会话保持**: 本地持久化 Session，减少重复登录
 - 🤖 **定时任务**: 内置 CRON 调度器，每天定时执行
-- � **消息通知**: 任务结果实时发送到 Telegram
+- 📱 **消息通知**: 任务结果实时发送到 Telegram
 
 ## 🚀 快速开始
 
@@ -102,22 +102,42 @@ cd M-TEAM-AutoLogging
     npm start
     ```
 
+## �️ 详细配置说明
+
+### 环境变量 (.env)
+
+配置项支持通过 `docker-compose.yml` 的 `environment` 字段设置，或通过命令行 `-e` 传入。
+
+| 变量名 | 说明 | 默认值 | 必填 |
+| :--- | :--- | :--- | :--- |
+| `MT_USERNAME` | M-TEAM 用户名 | - | ✅ |
+| `MT_PASSWORD` | M-TEAM 密码 | - | ✅ |
+| `TG_BOT_TOKEN` | Telegram Bot Token | - | ✅ |
+| `TG_USER_ID` | Telegram User ID | - | ✅ |
+| `CRON_EXPRESSION` | 定时任务表达式 (秒 分 时 日 月 周) | `0 9 * * *` (每天09:00) | ❌ |
+| `RANDOM_DELAY_MAX` | 随机延迟最大时间 (毫秒) | `2700000` (45分钟) | ❌ |
+| `RUN_ON_START` | **[调试模式]** 启动时是否立即运行一次 | `false` | ❌ |
+| `SKIP_DELAY` | **[调试模式]** 是否跳过随机延迟 | `false` | ❌ |
+
+### 调试模式 (推荐初次使用开启)
+
+如果你希望容器启动后**立即运行**以便检查配置是否正确，请设置 `RUN_ON_START=true`。
+同时建议设置 `SKIP_DELAY=true` 以跳过等待时间。
+
+**docker-compose.yml 示例:**
+
+```yaml
+environment:
+  - RUN_ON_START=true
+  - SKIP_DELAY=true
+  # ... 其他配置
+```
+
 ## 📂 数据持久化
 
-容器内的 `/app/data` 目录会映射到宿主机的 `./data` 目录。
+容器内的 `/app/data` 目录会映射到宿主机的 `./data` 目录。建议定期备份。
 
-- `session.json`: 保存浏览器的登录状态 (Cookie + Storage)
-
-## �️ 环境变量说明
-
-| 变量名 |说明 | 默认值 |
-| :--- | :--- | :--- |
-| `MT_USERNAME` | M-TEAM 用户名 | 必填 |
-| `MT_PASSWORD` | M-TEAM 密码 | 必填 |
-| `TG_BOT_TOKEN` | Telegram Bot Token | 必填 |
-| `TG_USER_ID` | Telegram User ID | 必填 |
-| `CRON_EXPRESSION` | 定时任务表达式 | `0 9 * * *` |
-| `RANDOM_DELAY_MAX` | 随机延迟 (毫秒) | `2700000` (45分钟) |
+- `session.json`: 保存浏览器的登录状态 (Cookie + Storage)，不仅包含 Cookie，还包含 LocalStorage，实现完美免登录。
 
 ---
 **免责声明**: 本项目仅供学习交流使用，请勿用于非法用途。

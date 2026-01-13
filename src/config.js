@@ -28,6 +28,10 @@ export const config = {
     DEVICE_APPROVAL_WAIT: 45 * 1000,   // 设备验证等待 45 秒
     TFA_TIMEOUT: 120 * 1000,           // 2FA 验证超时 120 秒
     TFA_POLL_INTERVAL: 3 * 1000,       // 2FA 轮询间隔 3 秒
+
+    // 行为配置 (用于调试)
+    RUN_ON_START: process.env.RUN_ON_START === 'true', // 是否在启动时立即执行一次
+    SKIP_DELAY: process.env.SKIP_DELAY === 'true',     // 是否跳过随机延迟
 };
 
 /**

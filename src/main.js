@@ -132,6 +132,13 @@ async function main() {
 
     if (cronExp) {
         console.log(`📅 定时任务模式已启动: ${cronExp}`);
+
+        // 调试模式：启动即运行
+        if (config.RUN_ON_START) {
+            console.log('🚀 检测到 RUN_ON_START=true，正在立即执行一次任务...');
+            await runTask();
+        }
+
         console.log('⏳ 等待下一次执行...');
 
         // 立即执行一次 (可选，防止部署后要等很久)
