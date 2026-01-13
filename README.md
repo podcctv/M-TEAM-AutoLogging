@@ -45,7 +45,33 @@
 3. **初次运行**
     初次运行可能需要 2FA 验证。请留意 Telegram Bot 发来的消息，直接回复 6 位验证码即可。
 
-### 3. 本地开发
+### 3. Docker 命令行部署 (可选)
+
+如果你不想使用 docker-compose，也可以直接使用 docker 命令：
+
+1. **构建镜像**
+
+    ```bash
+    docker build -t mteam-bot .
+    ```
+
+2. **启动容器**
+    *(请替换其中的环境变量)*
+
+    ```bash
+    docker run -d \
+      --name mteam-bot \
+      --restart unless-stopped \
+      -v $(pwd)/data:/app/data \
+      -e MT_USERNAME=你的用户名 \
+      -e MT_PASSWORD=你的密码 \
+      -e TG_BOT_TOKEN=123456:ABC-DEF... \
+      -e TG_USER_ID=123456789 \
+      -e CRON_EXPRESSION="0 9 * * *" \
+      mteam-bot
+    ```
+
+### 4. 本地开发
 
 需要 Node.js 18+ 环境。
 
