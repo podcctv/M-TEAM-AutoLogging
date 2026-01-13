@@ -523,28 +523,54 @@ async function checkLoginStatus(page) {
     // 截图调试
     console.log('⚠️ 未找到用户元素，当前页面标题:', await page.title());
     await page.screenshot({ path: '/tmp/login_check_fail.png' });
-
     return !url.includes('login');
 }
 
 /**
- * 提取 Cookie
+ * 提取 Cookie (使用 CDP 获取更完整的 Cookie)
  */
 async function extractCookies(context, page = null) {
-    // 尝试获取所有 Cookie
-    let cookies = await context.cookies();
+    try {
+        let cookies = [];
 
-    // 如果没有，尝试指定当前 URL
-    if (cookies.length === 0 && page) {
-        console.log('⚠️ 全局 Cookie 为空，尝试获取当前 URL Cookie...');
-        cookies = await context.cookies([page.url()]);
+        // 优先使用 CDP 获取 (能获取 HttpOnly 和 Secure Cookie)
+        if (page) {
+            try {
+                const client = await page.context().newCDPSession(page);
+                const response = await client.send('Network.getAllCookies');
+                if (response && response.cookies) {
+                    // 转换 CDP Cookie 格式为 Playwright 格式
+                    cookies = response.cookies.map(c => ({
+                        name: c.name,
+                        value: c.value,
+                        domain: c.domain,
+                        path: c.path,
+                        expires: c.expires,
+                        httpOnly: c.httpOnly,
+                        secure: c.secure,
+                        sameSite: c.sameSite
+                    }));
+                    console.log(`🍪 通过 CDP 提取到 ${cookies.length} 个 Cookie`);
+                }
+            } catch (cdpError) {
+                console.warn('⚠️ CDP 提取失败，回退到常规方法:', cdpError.message);
+            }
+        }
+
+        // 如果 CDP 失败或没获取到，使用常规方法补救
+        if (cookies.length === 0) {
+            cookies = await context.cookies();
+            console.log(`🍪 常规方法提取到 ${cookies.length} 个 Cookie`);
+        }
+
+        const cookieNames = cookies.map(c => c.name).join(', ');
+        console.log(`🍪 最终 Cookie 清单: ${cookieNames || '无'}`);
+
+        return JSON.stringify(cookies);
+    } catch (error) {
+        console.error('❌ Cookie 提取出错:', error.message);
+        return '[]';
     }
-
-    const cookieNames = cookies.map(c => c.name).join(', ');
-    console.log(`🍪 Cookie 已提取 (${cookies.length} 个): ${cookieNames}`);
-
-    // 即使为空也返回，以便更新 Secrets
-    return JSON.stringify(cookies);
 }
 
 /**
