@@ -202,12 +202,52 @@ async function handleDeviceApproval(page) {
 }
 
 /**
+ * 处理公告弹窗 (Web组招募人员等)
+ */
+async function handleAnnouncements(page) {
+    try {
+        console.log('🔍 检查公告弹窗...');
+        const confirmSelectors = [
+            'button:has-text("確認")',
+            'button:has-text("确认")',
+            'button:has-text("Confirm")',
+            'button:has-text("我知道了")',
+            'button:has-text("Close")',
+            '.ant-modal-footer button',
+            'div[role="dialog"] button'
+        ];
+
+        for (const selector of confirmSelectors) {
+            const button = await page.$(selector);
+            if (button && await button.isVisible()) {
+                console.log(`🖱️ 检测到公告弹窗，点击确认: ${selector}`);
+                await button.click();
+                await page.waitForTimeout(1000); // 等待弹窗消失
+                return true;
+            }
+        }
+    } catch (e) {
+        console.log('⚠️ 处理弹窗时出错:', e.message);
+    }
+    return false;
+}
+
+/**
  * 检查是否需要 2FA 验证
  */
 async function check2FA(page) {
     console.log('🔍 检查是否需要 2FA...');
 
-    // 方法1: 通过选择器检查
+    // 1. 如果已经登录成功，不需要 2FA
+    // (防止首页出现包含 "验证" 字样的公告导致误判)
+    try {
+        if (await checkLoginStatus(page)) {
+            console.log('✅ 已检测到登录状态，无需 2FA');
+            return false;
+        }
+    } catch (e) { }
+
+    // 2. 方法1: 通过选择器检查
     const tfaIndicators = [
         'input[placeholder*="6位"]',
         'input[placeholder*="验证码"]',
@@ -221,13 +261,14 @@ async function check2FA(page) {
 
     for (const selector of tfaIndicators) {
         const element = await page.$(selector);
-        if (element) {
-            console.log('🔐 检测到 2FA 验证页面 (选择器匹配)');
+        if (element && await element.isVisible()) {
+            console.log(`🔐 检测到 2FA 验证页面 (选择器匹配: ${selector})`);
             return true;
         }
     }
 
-    // 方法2: 检查页面文本内容
+    // 3. 方法2: 检查页面文本内容
+    // 注意：增加上下文检查，避免匹配到公告内容
     const pageContent = await page.content();
     const tfaTexts = [
         '输入6位',
@@ -237,14 +278,22 @@ async function check2FA(page) {
         '其他验证码',
         '两步验证',
         '双重认证',
-        '2FA',
         'TOTP',
     ];
 
-    for (const text of tfaTexts) {
-        if (pageContent.includes(text)) {
-            console.log(`🔐 检测到 2FA 验证页面 (文本匹配: ${text})`);
-            return true;
+    // 排除特定场景 (如招募公告)
+    if (pageContent.includes('招募人员') || pageContent.includes('招聘')) {
+        console.log('ℹ️ 检测到招募公告，忽略文本匹配');
+    } else {
+        for (const text of tfaTexts) {
+            if (pageContent.includes(text)) {
+                // 二次确认：应该有输入框
+                const input = await page.$('input');
+                if (input) {
+                    console.log(`🔐 检测到 2FA 验证页面 (文本匹配: ${text})`);
+                    return true;
+                }
+            }
         }
     }
 
@@ -281,6 +330,13 @@ async function handle2FA(page) {
         // 查找验证码输入框
         const inputElement = await findCodeInput(page);
         if (!inputElement) {
+            // 关键修复：如果在输入验证码前，页面已经跳转或变成了公告，说明可能已经登录了
+            // 尝试处理一下弹窗，然后检查登录状态
+            await handleAnnouncements(page);
+            if (await checkLoginStatus(page)) {
+                console.log('✅ 检测到已经登录成功 (2FA 输入框消失)');
+                return;
+            }
             throw new Error('未找到验证码输入框');
         }
 
@@ -297,13 +353,22 @@ async function handle2FA(page) {
         await clickSubmitButton(page, inputElement);
 
         // 等待页面响应
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
         await page.waitForLoadState('networkidle');
 
-        // 检查是否验证成功 (页面跳转或不再显示验证框)
+        // 关键修复：提交后先处理弹窗
+        await handleAnnouncements(page);
+
+        // 关键修复：提交后优先检查是否已登录
+        if (await checkLoginStatus(page)) {
+            console.log('✅ 登录状态确认，跳出 2FA 循环');
+            return;
+        }
+
+        // 只有未登录，才检查是否还需要 2FA
         const stillNeed2FA = await check2FA(page);
         if (!stillNeed2FA) {
-            console.log('✅ 2FA 验证成功');
+            console.log('✅ 2FA 验证通过 (不再显示验证框)');
             return;
         }
 
@@ -542,6 +607,9 @@ async function checkLoginStatus(page) {
         'div[class*="user-profile"]',
         'span[class*="avatar"]'
     ];
+
+    // 尝试处理遮挡的弹窗
+    await handleAnnouncements(page);
 
     for (const selector of userIndicators) {
         try {
