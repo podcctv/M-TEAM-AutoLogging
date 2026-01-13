@@ -1,0 +1,23 @@
+{
+    "name": "mteam-auto-logging",
+    "version": "1.0.0",
+    "description": "M-TEAM 自动化登录助手 - 基于 GitHub Actions + Playwright",
+    "main": "src/main.js",
+    "type": "module",
+    "scripts": {
+        "start": "node src/main.js",
+        "test": "node --check src/main.js && node --check src/auth.js && node --check src/telegram.js && node --check src/github_api.js && node --check src/scraper.js && node --check src/config.js"
+    },
+    "dependencies": {
+        "playwright": "^1.40.0",
+        "@octokit/rest": "^20.0.0",
+        "axios": "^1.6.0",
+        "tweetnacl": "^1.0.3",
+        "tweetnacl-util": "^0.15.1"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "author": "",
+    "license": "MIT"
+}
