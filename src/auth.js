@@ -611,6 +611,16 @@ async function checkLoginStatus(page) {
     // 尝试处理遮挡的弹窗
     await handleAnnouncements(page);
 
+    // 0. 优先检查标题 (最准确)
+    // 如果标题包含 "首页" 或 "M-Team"，且 URL 不包含 login，基本就是登录了
+    try {
+        const title = await page.title();
+        if ((title.includes('M-Team') || title.includes('首頁') || title.includes('首页')) && !url.includes('login')) {
+            console.log(`✅ 登录状态确认 (标题匹配: ${title})`);
+            return true;
+        }
+    } catch (e) { }
+
     for (const selector of userIndicators) {
         try {
             const element = await page.$(selector);
@@ -702,14 +712,23 @@ export async function login() {
         if (hasCookie) {
             // 尝试直接访问首页
             console.log('🔍 验证 Cookie 有效性...');
-            await page.goto(config.MT_INDEX_URL, { waitUntil: 'networkidle' });
+            // 先访问登录页以确立 Origin，方便写入 LocalStorage
+            try {
+                await page.goto(config.MT_LOGIN_URL, { waitUntil: 'domcontentloaded' });
+            } catch (e) {
+                console.log('⚠️ 访问登录页确立 Origin 失败 (非致命):', e.message);
+            }
 
             // 恢复 LocalStorage
             await tryRestoreStorage(page);
-            await page.reload({ waitUntil: 'networkidle' });
+
+            // 关键修改：恢复后重新访问首页，而不是 reload (防止停留在 login 页面)
+            console.log('🔄 恢复 Storage 后尝试访问首页...');
+            await page.goto(config.MT_INDEX_URL, { waitUntil: 'networkidle' });
 
             if (await checkLoginStatus(page)) {
-                console.log('✅ Cookie 有效，已登录');
+                console.log('✅ Cookie/Storage 有效，已登录');
+                // 重新提取以确保是最新的（防刷新）
                 const cookies = await extractCookies(context, page);
                 const storage = await extractStorage(page);
                 return { success: true, cookies, storage, page, browser, context };
