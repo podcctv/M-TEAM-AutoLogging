@@ -18,6 +18,9 @@ export const config = {
     REPO_TOKEN: process.env.REPO_TOKEN,
     GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY || '',
 
+    // 本地持久化配置
+    STORAGE_PATH: process.env.STORAGE_PATH || './data/session.json',
+
     // M-TEAM URL
     MT_BASE_URL: 'https://kp.m-team.cc',
     MT_LOGIN_URL: 'https://kp.m-team.cc/login.php',
