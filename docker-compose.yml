@@ -5,6 +5,8 @@ services:
     build: .
     container_name: mteam-bot
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
     environment:
@@ -12,6 +14,8 @@ services:
       - MT_PASSWORD=${MT_PASSWORD}
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
       - TG_USER_ID=${TG_USER_ID}
-      - CRON_EXPRESSION=0 9 * * * # 每天上午 9 点运行 (可选)
-      - RANDOM_DELAY_MAX=2700000 # 随机延迟最大时间 (毫秒)，默认 45 分钟
+      - CRON_EXPRESSION=${CRON_EXPRESSION:-0 9 * * *} # 默认9点
+      - RANDOM_DELAY_MAX=${RANDOM_DELAY_MAX:-2700000} # 默认45分钟
+      - RUN_ON_START=${RUN_ON_START:-false}
+      - SKIP_DELAY=${SKIP_DELAY:-false}
     tty: true
