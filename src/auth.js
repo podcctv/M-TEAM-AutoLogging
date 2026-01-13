@@ -134,7 +134,7 @@ async function handle2FA(page) {
 
     // 请求用户输入验证码
     const code = await telegram.waitForVerificationCode(
-        '🔐 *请输入 2FA 验证码*\n\n请回复 6 位数字验证码 (TOTP 或邮箱码):',
+        '🔐 *M-TEAM 需要 2FA 验证*\n\n请回复 6 位数字验证码:\n• 直接发送: `123456`\n• 或命令: `/mtcode 123456`\n\n⏰ 等待时间: 2 分钟',
         config.TFA_TIMEOUT
     );
 

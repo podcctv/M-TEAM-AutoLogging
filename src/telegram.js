@@ -75,6 +75,9 @@ export async function initUpdates() {
 
 /**
  * 轮询获取用户输入的验证码
+ * 支持两种格式:
+ * 1. 直接发送 6 位数字: 123456
+ * 2. 命令格式: /mtcode 123456
  * @param {string} prompt - 提示消息
  * @param {number} timeout - 超时时间(毫秒)
  * @returns {Promise<string|null>} - 用户输入的验证码
@@ -105,13 +108,31 @@ export async function waitForVerificationCode(prompt, timeout = config.TFA_TIMEO
                         update.message.from &&
                         String(update.message.from.id) === String(config.TG_USER_ID)) {
 
-                        const text = update.message.text || '';
-                        // 匹配 6 位数字验证码
-                        const match = text.match(/\b(\d{6})\b/);
-                        if (match) {
+                        const text = (update.message.text || '').trim();
+
+                        // 支持两种格式:
+                        // 1. /mtcode 123456
+                        // 2. 直接发送 123456
+                        let code = null;
+
+                        // 检查 /mtcode 命令
+                        const cmdMatch = text.match(/^\/mtcode\s+(\d{6})$/i);
+                        if (cmdMatch) {
+                            code = cmdMatch[1];
+                        }
+
+                        // 检查纯 6 位数字
+                        if (!code) {
+                            const numMatch = text.match(/^(\d{6})$/);
+                            if (numMatch) {
+                                code = numMatch[1];
+                            }
+                        }
+
+                        if (code) {
                             console.log('✅ 收到验证码');
                             await sendMessage('✅ 验证码已收到，正在验证...');
-                            return match[1];
+                            return code;
                         }
                     }
                 }
