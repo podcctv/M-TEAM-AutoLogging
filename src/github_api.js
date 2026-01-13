@@ -5,8 +5,10 @@
 
 import { Octokit } from '@octokit/rest';
 import sodium from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import naclUtil from 'tweetnacl-util';
 import config from './config.js';
+
+const { encodeBase64, decodeBase64 } = naclUtil;
 
 let octokit = null;
 
