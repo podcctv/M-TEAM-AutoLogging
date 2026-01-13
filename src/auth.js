@@ -80,8 +80,18 @@ async function tryRestoreStorage(page) {
  * 提取 LocalStorage
  * 注意：过滤掉过大的值，以避免超过 GitHub Secrets 限制 (64KB)
  */
+/**
+ * 提取 LocalStorage
+ * 注意：过滤掉过大的值，以避免超过 GitHub Secrets 限制 (64KB)
+ */
 async function extractStorage(page) {
     try {
+        // 检查 SessionStorage (调试用)
+        const sessionKeys = await page.evaluate(() => Object.keys(sessionStorage));
+        if (sessionKeys.length > 0) {
+            console.log('⚠️ 检测到 SessionStorage 键 (目前未保存):', sessionKeys.join(', '));
+        }
+
         const storage = await page.evaluate(() => {
             const data = {};
             // 超过 2KB 的值将被忽略
@@ -92,7 +102,7 @@ async function extractStorage(page) {
                 const value = localStorage.getItem(key);
 
                 if (value && value.length > MAX_VALUE_SIZE) {
-                    console.warn(`[LocalStorage] Ignoring large key: ${key} (${value.length} chars)`);
+                    console.warn(`[LocalStorage] ⚠️ 忽略大文件: ${key} (${value.length} 字符)`);
                     continue;
                 }
 
@@ -101,7 +111,8 @@ async function extractStorage(page) {
             return data;
         });
 
-        console.log('💾 LocalStorage 已提取 (已过滤大文件)');
+        console.log(`💾 LocalStorage 提取: ${Object.keys(storage).length} 个键`);
+        console.log(`📝 保存的键: ${Object.keys(storage).join(', ')}`);
         return JSON.stringify(storage);
     } catch (error) {
         console.log('⚠️ LocalStorage 提取失败:', error.message);
@@ -507,8 +518,9 @@ async function checkLoginStatus(page) {
  */
 async function extractCookies(context) {
     const cookies = await context.cookies();
+    const cookieNames = cookies.map(c => c.name).join(', ');
+    console.log(`🍪 Cookie 已提取 (${cookies.length} 个): ${cookieNames}`);
     const cookieJson = JSON.stringify(cookies);
-    console.log('🍪 Cookie 已提取');
     return cookieJson;
 }
 
