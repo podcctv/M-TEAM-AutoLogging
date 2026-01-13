@@ -126,10 +126,6 @@ async function runTask() {
 async function main() {
     console.log('M-TEAM AutoLogging Docker Daemon Started');
 
-    // Debug: 打印配置值
-    console.log('🔧 调试: RUN_ON_START 环境变量 =', process.env.RUN_ON_START);
-    console.log('🔧 调试: config.RUN_ON_START =', config.RUN_ON_START);
-
     // 检查是否配置了 CRON 表达式
     // 默认每天上午 9 点: '0 9 * * *'
     const cronExp = process.env.CRON_EXPRESSION;
