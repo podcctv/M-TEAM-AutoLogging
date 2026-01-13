@@ -229,22 +229,38 @@ async function performLogin(page) {
 
     // 点击登录按钮
     const loginButtonSelectors = [
+        'button:has-text("登 录")',
+        'button:has-text("登录")',
+        'button:has-text("Sign in")',
+        'button:has-text("Login")',
         'button[type="submit"]',
         'input[type="submit"]',
-        'button:has-text("登录")',
-        'button:has-text("Login")',
         '#login-btn',
     ];
 
+    let clicked = false;
     for (const selector of loginButtonSelectors) {
-        const button = await page.$(selector);
-        if (button) {
-            await button.click();
-            break;
+        try {
+            const button = await page.$(selector);
+            if (button) {
+                console.log(`🖱️ 点击登录按钮: ${selector}`);
+                await button.click();
+                clicked = true;
+                break;
+            }
+        } catch (e) {
+            // 继续尝试下一个选择器
         }
     }
 
-    // 等待页面响应
+    if (!clicked) {
+        // 尝试使用更通用的方法
+        console.log('⚠️ 尝试备用点击方法...');
+        await page.click('button >> text=/登.*录/');
+    }
+
+    // 等待页面响应 (可能会跳转)
+    await page.waitForTimeout(3000);
     await page.waitForLoadState('networkidle');
 }
 
