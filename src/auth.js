@@ -78,18 +78,30 @@ async function tryRestoreStorage(page) {
 
 /**
  * 提取 LocalStorage
+ * 注意：过滤掉过大的值，以避免超过 GitHub Secrets 限制 (64KB)
  */
 async function extractStorage(page) {
     try {
         const storage = await page.evaluate(() => {
             const data = {};
+            // 超过 2KB 的值将被忽略
+            const MAX_VALUE_SIZE = 2048;
+
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                data[key] = localStorage.getItem(key);
+                const value = localStorage.getItem(key);
+
+                if (value && value.length > MAX_VALUE_SIZE) {
+                    console.warn(`[LocalStorage] Ignoring large key: ${key} (${value.length} chars)`);
+                    continue;
+                }
+
+                data[key] = value;
             }
             return data;
         });
-        console.log('💾 LocalStorage 已提取');
+
+        console.log('💾 LocalStorage 已提取 (已过滤大文件)');
         return JSON.stringify(storage);
     } catch (error) {
         console.log('⚠️ LocalStorage 提取失败:', error.message);
