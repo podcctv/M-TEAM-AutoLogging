@@ -4,8 +4,14 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import tweetsodium from 'tweetsodium';
+import naclUtil from 'tweetnacl-util';
 import config from './config.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const sealedBox = require('tweetnacl-sealed-box');
+
+const { encodeBase64, decodeBase64 } = naclUtil;
 
 let octokit = null;
 
@@ -61,13 +67,21 @@ async function getPublicKey() {
  * @returns {string} - Base64 编码的加密值
  */
 function encryptSecret(value, publicKey) {
-    const messageBytes = Buffer.from(value);
-    const keyBytes = Buffer.from(publicKey, 'base64');
+    const messageBytes = new TextEncoder().encode(value);
+    const keyBytes = decodeBase64(publicKey);
 
-    // 使用 tweetsodium 进行加密 (专门用于 GitHub Secrets)
-    const encryptedBytes = tweetsodium.seal(messageBytes, keyBytes);
+    // 使用 tweetnacl-sealed-box 进行加密
+    // 通过 require 导入通常能获得正确的导出对象
+    let encryptedBytes;
+    if (typeof sealedBox === 'function') {
+        encryptedBytes = sealedBox(messageBytes, keyBytes);
+    } else if (typeof sealedBox.seal === 'function') {
+        encryptedBytes = sealedBox.seal(messageBytes, keyBytes);
+    } else {
+        throw new Error('无法调用 sealedBox 加密函数，导入未识别');
+    }
 
-    return Buffer.from(encryptedBytes).toString('base64');
+    return encodeBase64(encryptedBytes);
 }
 
 /**
