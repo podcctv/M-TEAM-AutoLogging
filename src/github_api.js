@@ -4,11 +4,8 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import sodium from 'tweetnacl';
-import naclUtil from 'tweetnacl-util';
+import _sodium from 'libsodium-wrappers';
 import config from './config.js';
-
-const { encodeBase64, decodeBase64 } = naclUtil;
 
 let octokit = null;
 
@@ -61,14 +58,25 @@ async function getPublicKey() {
  * 加密 Secret 值
  * @param {string} value - 要加密的值
  * @param {string} publicKey - Base64 编码的公钥
- * @returns {string} - Base64 编码的加密值
+ * @returns {Promise<string>} - Base64 编码的加密值
  */
-function encryptSecret(value, publicKey) {
-    const messageBytes = new TextEncoder().encode(value);
-    const keyBytes = decodeBase64(publicKey);
+async function encryptSecret(value, publicKey) {
+    await _sodium.ready;
+    const sodium = _sodium;
 
-    const encryptedBytes = sodium.box.seal(messageBytes, keyBytes);
-    return encodeBase64(encryptedBytes);
+    // 转换公钥为二进制
+    const binkey = sodium.from_base64(publicKey, sodium.base64_variants.ORIGINAL);
+
+    // 转换 secret 为二进制
+    const binsec = sodium.from_string(value);
+
+    // 加密
+    const encBytes = sodium.crypto_box_seal(binsec, binkey);
+
+    // 转换结果为 Base64
+    const output = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
+
+    return output;
 }
 
 /**
@@ -87,7 +95,7 @@ export async function updateSecret(secretName, secretValue) {
         const { owner, repo } = parseRepository();
         const { key, keyId } = await getPublicKey();
 
-        const encryptedValue = encryptSecret(secretValue, key);
+        const encryptedValue = await encryptSecret(secretValue, key);
 
         await client.rest.actions.createOrUpdateRepoSecret({
             owner,
