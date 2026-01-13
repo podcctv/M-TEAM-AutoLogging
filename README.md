@@ -12,7 +12,14 @@
 
 ## 🚀 快速开始
 
-### 1. 准备工作
+### 1. 获取代码
+
+```bash
+git clone https://github.com/podcctv/M-TEAM-AutoLogging.git
+cd M-TEAM-AutoLogging
+```
+
+### 2. 准备工作
 
 你需要准备以下信息：
 
@@ -20,7 +27,7 @@
 - **Telegram Bot Token** (向 @BotFather 申请)
 - **Telegram User ID** (向 @userinfobot 获取)
 
-### 2. Docker 部署 (推荐)
+### 3. Docker 部署 (推荐)
 
 项目已提供 `docker-compose.yml`，一键启动：
 
@@ -45,7 +52,7 @@
 3. **初次运行**
     初次运行可能需要 2FA 验证。请留意 Telegram Bot 发来的消息，直接回复 6 位验证码即可。
 
-### 3. Docker 命令行部署 (可选)
+### 4. Docker 命令行部署 (可选)
 
 如果你不想使用 docker-compose，也可以直接使用 docker 命令：
 
@@ -71,7 +78,7 @@
       mteam-bot
     ```
 
-### 4. 本地开发 / 环境变量配置
+### 5. 本地开发 / 环境变量配置
 
 需要 Node.js 18+ 环境。
 
