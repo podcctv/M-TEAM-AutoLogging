@@ -151,22 +151,78 @@ async function check2FA(page) {
 }
 
 /**
- * 处理 2FA 验证
+ * 处理 2FA 验证 (支持最多 10 次重试)
  */
 async function handle2FA(page) {
     console.log('⏳ 处理 2FA 验证...');
 
-    // 请求用户输入验证码
-    const code = await telegram.waitForVerificationCode(
-        '🔐 *M-TEAM 需要 2FA 验证*\n\n请回复 6 位数字验证码:\n• 直接发送: `123456`\n• 或命令: `/mtcode 123456`\n\n⏰ 等待时间: 2 分钟',
-        config.TFA_TIMEOUT
-    );
+    const MAX_ATTEMPTS = 10;
+    let attempt = 0;
 
-    if (!code) {
-        throw new Error('2FA 验证码输入超时');
+    while (attempt < MAX_ATTEMPTS) {
+        attempt++;
+        console.log(`🔄 2FA 验证尝试 ${attempt}/${MAX_ATTEMPTS}`);
+
+        // 构建提示消息
+        let prompt = `🔐 *M-TEAM 需要 2FA 验证*\n\n`;
+        if (attempt > 1) {
+            prompt += `⚠️ 第 ${attempt} 次尝试 (剩余 ${MAX_ATTEMPTS - attempt + 1} 次机会)\n\n`;
+        }
+        prompt += `请回复 6 位数字验证码:\n• 直接发送: \`123456\`\n• 或命令: \`/mtcode 123456\`\n\n⏰ 等待时间: 2 分钟`;
+
+        // 请求用户输入验证码
+        const code = await telegram.waitForVerificationCode(prompt, config.TFA_TIMEOUT);
+
+        if (!code) {
+            throw new Error('2FA 验证码输入超时');
+        }
+
+        // 查找验证码输入框
+        const inputElement = await findCodeInput(page);
+        if (!inputElement) {
+            throw new Error('未找到验证码输入框');
+        }
+
+        // 清空并输入验证码
+        await inputElement.click();
+        await inputElement.fill('');
+        await inputElement.fill(code);
+        console.log('✅ 验证码已填入');
+
+        // 等待一下确保输入完成
+        await page.waitForTimeout(500);
+
+        // 点击提交按钮
+        await clickSubmitButton(page, inputElement);
+
+        // 等待页面响应
+        await page.waitForTimeout(2000);
+        await page.waitForLoadState('networkidle');
+
+        // 检查是否验证成功 (页面跳转或不再显示验证框)
+        const stillNeed2FA = await check2FA(page);
+        if (!stillNeed2FA) {
+            console.log('✅ 2FA 验证成功');
+            return;
+        }
+
+        // 检查错误消息
+        const errorMsg = await getErrorMessage(page);
+        if (errorMsg) {
+            console.log(`❌ 验证失败: ${errorMsg}`);
+            await telegram.sendMessage(`❌ *验证失败*\n\n${errorMsg}\n\n请重新输入验证码...`);
+        } else {
+            await telegram.sendMessage('❌ 验证码无效，请重新输入...');
+        }
     }
 
-    // 查找验证码输入框 (按优先级)
+    throw new Error(`2FA 验证失败，已超过最大尝试次数 (${MAX_ATTEMPTS} 次)`);
+}
+
+/**
+ * 查找验证码输入框
+ */
+async function findCodeInput(page) {
     const inputSelectors = [
         'input[placeholder*="6位"]',
         'input[placeholder*="验证码"]',
@@ -176,37 +232,27 @@ async function handle2FA(page) {
         'input[name*="2fa"]',
         'input[name*="totp"]',
         'input[name*="otp"]',
-        // 通用文本输入框 (作为最后手段)
         'input[type="text"]:not([name="username"]):not([name="password"])',
     ];
 
-    let inputElement = null;
     for (const selector of inputSelectors) {
         try {
-            inputElement = await page.$(selector);
-            if (inputElement) {
+            const element = await page.$(selector);
+            if (element) {
                 console.log(`📝 找到验证码输入框: ${selector}`);
-                break;
+                return element;
             }
         } catch (e) {
-            // 继续尝试下一个
+            // 继续
         }
     }
+    return null;
+}
 
-    if (!inputElement) {
-        throw new Error('未找到验证码输入框');
-    }
-
-    // 清空并输入验证码
-    await inputElement.click();
-    await inputElement.fill('');
-    await inputElement.fill(code);
-    console.log('✅ 验证码已填入');
-
-    // 等待一下确保输入完成
-    await page.waitForTimeout(500);
-
-    // 查找并点击提交按钮
+/**
+ * 点击提交按钮
+ */
+async function clickSubmitButton(page, inputElement) {
     const submitSelectors = [
         'button:has-text("登 录")',
         'button:has-text("登录")',
@@ -217,30 +263,69 @@ async function handle2FA(page) {
         'input[type="submit"]',
     ];
 
-    let clicked = false;
     for (const selector of submitSelectors) {
         try {
             const button = await page.$(selector);
             if (button) {
                 console.log(`🖱️ 点击提交按钮: ${selector}`);
                 await button.click();
-                clicked = true;
-                break;
+                return;
             }
         } catch (e) {
-            // 继续尝试下一个
+            // 继续
         }
     }
 
-    if (!clicked) {
-        // 备用方法: 按回车键提交
-        console.log('⚠️ 未找到提交按钮，尝试按回车键...');
-        await inputElement.press('Enter');
-    }
+    // 备用方法: 按回车键
+    console.log('⚠️ 未找到提交按钮，尝试按回车键...');
+    await inputElement.press('Enter');
+}
 
-    // 等待页面响应
-    await page.waitForTimeout(2000);
-    await page.waitForLoadState('networkidle');
+/**
+ * 获取页面错误消息
+ */
+async function getErrorMessage(page) {
+    try {
+        const errorSelectors = [
+            '.error',
+            '.alert-danger',
+            '.message-error',
+            '.ant-message-error',
+            '[class*="error"]',
+        ];
+
+        // 检查页面文本
+        const pageText = await page.evaluate(() => document.body.innerText);
+
+        // 匹配常见错误消息
+        const errorPatterns = [
+            /两步验证未通过[，,]?(.+)/,
+            /验证码错误(.+)?/,
+            /验证失败(.+)?/,
+            /您还有(\d+)次机会/,
+        ];
+
+        for (const pattern of errorPatterns) {
+            const match = pageText.match(pattern);
+            if (match) {
+                return match[0];
+            }
+        }
+
+        // 尝试从元素获取
+        for (const selector of errorSelectors) {
+            const el = await page.$(selector);
+            if (el) {
+                const text = await el.textContent();
+                if (text && text.includes('验证') || text.includes('错误') || text.includes('失败')) {
+                    return text.trim();
+                }
+            }
+        }
+    } catch (e) {
+        // 忽略
+    }
+    return null;
 }
 
 /**
