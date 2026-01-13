@@ -42,13 +42,16 @@ async function randomDelay() {
     }
 }
 
+// 调度器
+import schedule from 'node-schedule';
+
 /**
- * 主执行函数
+ * 核心任务逻辑
  */
-async function main() {
+async function runTask() {
     console.log('='.repeat(50));
-    console.log('🚀 M-TEAM 自动化助手启动');
-    console.log(`⏰ 启动时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+    console.log('🚀 任务开始执行');
+    console.log(`⏰ 当前时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
     console.log('='.repeat(50));
 
     let browser = null;
@@ -57,7 +60,8 @@ async function main() {
         // 验证配置
         validateConfig();
 
-        // 随机延迟
+        // 随机延迟 (仅在 CRON 模式下跳过第一次执行的延迟? 或者每次都延迟?)
+        // 在 Docker 守护进程模式下，调度器会准点触发，我们可以在这里加随机延迟
         await randomDelay();
 
         // 执行登录
@@ -69,7 +73,7 @@ async function main() {
         }
 
         browser = loginResult.browser;
-        const { page, cookies, storage, context } = loginResult;
+        const { page, context } = loginResult;
 
         // 抓取用户数据
         console.log('\n📍 步骤 2: 抓取用户数据');
@@ -79,62 +83,35 @@ async function main() {
         console.log('\n📍 步骤 3: 发送 Telegram 通知');
         await telegram.sendSuccessReport(userData);
 
-        // 更新 GitHub Secrets (Session)
+        // 保存登录状态 (本地持久化)
         console.log('\n📍 步骤 4: 保存登录状态');
-        if (config.REPO_TOKEN && config.GITHUB_REPOSITORY) {
-            try {
-                console.log('🔑 REPO_TOKEN: 已配置');
-                console.log('📦 GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY);
+        try {
+            console.log('🔄 获取最终会话状态...');
+            const storageState = await context.storageState();
 
-                // 重新提取最新的状态 (storageState)
-                console.log('🔄 获取最终会话状态...');
-                const storageState = await context.storageState();
-                const sessionStr = JSON.stringify(storageState);
+            // 保存到本地文件
+            await auth.saveSessionState(storageState);
 
-                // 检查大小
-                const kbSize = (sessionStr.length / 1024).toFixed(2);
-                console.log(`📦 会话状态大小: ${kbSize} KB`);
-
-                if (sessionStr.length > 60000) {
-                    console.warn('⚠️ 会话状态过大，可能导致 Secret 保存失败! 正在尝试优化...');
-                    // 简单的优化：移除一些垃圾数据 (如果需要可以做)
-                }
-
-                await github.updateSessionSecret(sessionStr);
-
-                // 为了兼容性，也尽量保存旧的 Cookie Secret (可选)
-                // await github.updateCookieSecret(JSON.stringify(storageState.cookies));
-
-                console.log('✅ 完整会话 (MT_SESSION) 已保存');
-
-            } catch (saveError) {
-                console.error('❌ 状态保存失败:', saveError.message);
-                await telegram.sendMessage(`⚠️ 状态保存失败: ${saveError.message}`);
+            // 兼容性: 如果还配置了 GitHub，也尝试推一下(可选)
+            if (config.REPO_TOKEN && config.GITHUB_REPOSITORY) {
+                // ... 这里的逻辑可以保留也可以删除，为了简化我们暂时跳过，只用本地文件
+                console.log('ℹ️ 跳过 GitHub Secret 更新 (Docker 模式使用本地存储)');
             }
-        } else {
-            console.log('⚠️ 未配置 REPO_TOKEN 或 GITHUB_REPOSITORY，状态未保存!');
-            console.log('   REPO_TOKEN:', config.REPO_TOKEN ? '已配置' : '未配置');
-            console.log('   GITHUB_REPOSITORY:', config.GITHUB_REPOSITORY || '未配置');
+
+        } catch (saveError) {
+            console.error('❌ 状态保存失败:', saveError.message);
+            await telegram.sendMessage(`⚠️ 状态保存失败: ${saveError.message}`);
         }
 
-        // 完成
-        console.log('\n' + '='.repeat(50));
-        console.log('✅ 任务完成');
-        console.log('='.repeat(50));
+        console.log('\n🎉 本次任务执行成功');
 
     } catch (error) {
         console.error('\n❌ 执行失败:', error.message);
-
-        // 发送错误通知
         try {
             await telegram.sendErrorNotice(error.message);
         } catch (notifyError) {
             console.error('⚠️ 发送错误通知失败:', notifyError.message);
         }
-
-        // 设置退出码
-        process.exitCode = 1;
-
     } finally {
         // 关闭浏览器
         if (browser) {
@@ -143,8 +120,47 @@ async function main() {
     }
 }
 
-// 执行主函数
+/**
+ * 主入口
+ */
+async function main() {
+    console.log('M-TEAM AutoLogging Docker Daemon Started');
+
+    // 检查是否配置了 CRON 表达式
+    // 默认每天上午 9 点: '0 9 * * *'
+    const cronExp = process.env.CRON_EXPRESSION;
+
+    if (cronExp) {
+        console.log(`📅 定时任务模式已启动: ${cronExp}`);
+        console.log('⏳ 等待下一次执行...');
+
+        // 立即执行一次 (可选，防止部署后要等很久)
+        // await runTask(); 
+
+        schedule.scheduleJob(cronExp, () => {
+            runTask();
+        });
+
+        // 保持进程活跃
+        process.stdin.resume();
+
+        // 优雅退出
+        const signals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+        signals.forEach(signal => {
+            process.on(signal, () => {
+                console.log(`\n🛑 收到 ${signal}，正在停止...`);
+                schedule.gracefulShutdown().then(() => process.exit(0));
+            });
+        });
+
+    } else {
+        // 一次性运行模式 (如果不设 CRON)
+        console.log('🚀 一次性运行模式');
+        await runTask();
+    }
+}
+
 main().catch(error => {
-    console.error('💥 未捕获的错误:', error);
-    process.exitCode = 1;
+    console.error('💥 主进程错误:', error);
+    process.exit(1);
 });

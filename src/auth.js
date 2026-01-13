@@ -4,6 +4,7 @@
  */
 
 import { chromium } from 'playwright';
+import fs from 'fs';
 import config from './config.js';
 import telegram from './telegram.js';
 
@@ -47,16 +48,31 @@ async function createBrowser(storageState = null) {
  * 获取会话状态 (Cookie + LocalStorage)
  */
 async function getSessionState() {
-    if (!config.MT_SESSION) {
-        return null;
-    }
+    // 1. 优先尝试读取本地文件
     try {
-        const session = JSON.parse(config.MT_SESSION);
-        return session;
+        if (fs.existsSync(config.STORAGE_PATH)) {
+            const fileData = fs.readFileSync(config.STORAGE_PATH, 'utf8');
+            if (fileData) {
+                console.log(`📦 从文件加载会话状态: ${config.STORAGE_PATH}`);
+                return JSON.parse(fileData);
+            }
+        }
     } catch (e) {
-        console.log('⚠️ MT_SESSION 解析失败:', e.message);
-        return null;
+        console.log('⚠️ 读取会话文件失败:', e.message);
     }
+
+    // 2. 尝试从环境变量读取 (兼容旧模式)
+    if (config.MT_SESSION) {
+        try {
+            const session = JSON.parse(config.MT_SESSION);
+            console.log('📦 从环境变量加载会话状态');
+            return session;
+        } catch (e) {
+            console.log('⚠️ MT_SESSION 环境变量解析失败:', e.message);
+        }
+    }
+
+    return null;
 }
 
 // ... (保持 tryLoginWithCookie, tryRestoreStorage 等辅助函数以备不时之需, 但主要逻辑已改变)
@@ -654,7 +670,30 @@ export async function closeBrowser(browser) {
     }
 }
 
+/**
+ * 保存会话状态到文件
+ */
+export async function saveSessionState(storageState) {
+    try {
+        const sessionStr = JSON.stringify(storageState, null, 2);
+
+        // 确保目录存在
+        const dir = config.STORAGE_PATH.substring(0, config.STORAGE_PATH.lastIndexOf('/'));
+        if (dir && !fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+
+        fs.writeFileSync(config.STORAGE_PATH, sessionStr);
+        console.log(`💾 会话状态已保存到本地: ${config.STORAGE_PATH}`);
+        return true;
+    } catch (e) {
+        console.error('❌ 保存会话状态失败:', e.message);
+        return false;
+    }
+}
+
 export default {
     login,
     closeBrowser,
+    saveSessionState
 };

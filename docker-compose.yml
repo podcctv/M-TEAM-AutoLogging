@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mteam-bot:
+    build: .
+    container_name: mteam-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - MT_USERNAME=${MT_USERNAME}
+      - MT_PASSWORD=${MT_PASSWORD}
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_USER_ID=${TG_USER_ID}
+      - CRON_EXPRESSION=0 9 * * * # 每天上午 9 点运行 (可选)
+      - RANDOM_DELAY_MAX=2700000 # 随机延迟最大时间 (毫秒)，默认 45 分钟
+    tty: true
