@@ -5,10 +5,13 @@
 
 import { Octokit } from '@octokit/rest';
 import naclUtil from 'tweetnacl-util';
-import sealedBox from 'tweetnacl-sealed-box';
+import * as sealedBoxModule from 'tweetnacl-sealed-box';
 import config from './config.js';
 
 const { encodeBase64, decodeBase64 } = naclUtil;
+
+// 处理 ESM/CJS 导入兼容性
+const sealedBox = sealedBoxModule.default || sealedBoxModule;
 
 let octokit = null;
 
@@ -67,8 +70,18 @@ function encryptSecret(value, publicKey) {
     const messageBytes = new TextEncoder().encode(value);
     const keyBytes = decodeBase64(publicKey);
 
-    // 使用 tweetnacl-sealed-box 进行加密 (等同于 libsodium crypto_box_seal)
-    // 注意: tweetnacl-sealed-box.seal 返回 Uint8Array
+    // 检查 seal 函数是否存在
+    if (typeof sealedBox.seal !== 'function') {
+        // 尝试查找嵌套的 seal
+        if (sealedBox.default && typeof sealedBox.default.seal === 'function') {
+            return encodeBase64(sealedBox.default.seal(messageBytes, keyBytes));
+        }
+
+        console.error('❌ sealedBox.seal 不是函数! 导入内容:', JSON.stringify(sealedBox));
+        throw new Error('加密库加载失败: tweetnacl-sealed-box 导入异常');
+    }
+
+    // 使用 tweetnacl-sealed-box 进行加密
     const encryptedBytes = sealedBox.seal(messageBytes, keyBytes);
 
     return encodeBase64(encryptedBytes);
