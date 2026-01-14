@@ -45,10 +45,21 @@ async function randomDelay() {
 // 调度器
 import schedule from 'node-schedule';
 
+// 任务锁，防止多个任务同时运行
+let isTaskRunning = false;
+
 /**
  * 核心任务逻辑
  */
 async function runTask() {
+    // 检查任务锁
+    if (isTaskRunning) {
+        console.log('⚠️ 任务正在运行中，跳过本次触发');
+        return;
+    }
+
+    isTaskRunning = true;
+
     console.log('='.repeat(50));
     console.log('🚀 任务开始执行');
     console.log(`⏰ 当前时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
@@ -117,6 +128,8 @@ async function runTask() {
         if (browser) {
             await auth.closeBrowser(browser);
         }
+        // 释放任务锁
+        isTaskRunning = false;
     }
 }
 

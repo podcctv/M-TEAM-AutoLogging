@@ -5,6 +5,7 @@
 
 import { chromium } from 'playwright';
 import fs from 'fs';
+import path from 'path';
 import config from './config.js';
 import telegram from './telegram.js';
 
@@ -677,8 +678,8 @@ export async function saveSessionState(storageState) {
     try {
         const sessionStr = JSON.stringify(storageState, null, 2);
 
-        // 确保目录存在
-        const dir = config.STORAGE_PATH.substring(0, config.STORAGE_PATH.lastIndexOf('/'));
+        // 确保目录存在 (使用 path 模块保证跨平台兼容性)
+        const dir = path.dirname(config.STORAGE_PATH);
         if (dir && !fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
