@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   mteam-bot:
+    # 方式一：本地构建 (默认)
     build: .
+    # 方式二：使用预构建镜像 (注释上面的 build, 取消注释下面的 image)
+    # image: ghcr.io/podcctv/m-team-autologging:latest
     container_name: mteam-bot
     restart: unless-stopped
     env_file:

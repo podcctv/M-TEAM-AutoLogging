@@ -1,5 +1,7 @@
 # M-TEAM 自动化登录助手 (Docker 版)
 
+[![Docker Build](https://github.com/podcctv/M-TEAM-AutoLogging/actions/workflows/docker-build.yml/badge.svg)](https://github.com/podcctv/M-TEAM-AutoLogging/actions/workflows/docker-build.yml)
+
 基于 Playwright 的 M-TEAM 自动化登录与数据抓取工具，支持 Docker 部署和 2FA 验证。
 
 ## ✨ 功能特点
